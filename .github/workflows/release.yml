@@ -55,7 +55,11 @@ jobs:
             --output SHA256SUMS.asc \
             SHA256SUMS
 
+      - name: Prepare release notes
+        run: sed "s/{{ tag }}/${GITHUB_REF_NAME}/g" RELEASE_NOTES.md > RELEASE_NOTES.generated.md
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          body_path: RELEASE_NOTES.generated.md
           files: dist/*
