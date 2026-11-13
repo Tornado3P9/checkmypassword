@@ -1,5 +1,3 @@
-# {{ tag }}
-
 A new release of **checkmypassword**.
 
 ## Downloads
