@@ -1,17 +1,9 @@
-A new release of **checkmypassword**.
-
-## Downloads
-
-Download the build for your operating system:
-
-- **Linux:** `checkmypassword-linux-x86_64.tar.gz`
-- **Windows:** `checkmypassword-windows-x86_64.zip`
-- **macOS:** `checkmypassword-macos-universal.zip`
+A new release of **[checkmypassword](https://github.com/Tornado3P9/checkmypassword)**.
 
 ## Changes
 
-- Add release highlights here.
-- Add fixes or improvements here.
+- Modified the release.yml to include zipping.
+- Added builds for mac and windows as well.
 
 ## Installation
 

@@ -9,8 +9,22 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: checkmypassword-linux-x86_64.tar.gz
+            binary: checkmypassword
+          - os: macos-latest
+            asset: checkmypassword-macos.tar.gz
+            binary: checkmypassword
+          - os: windows-latest
+            asset: checkmypassword-windows-x86_64.zip
+            binary: checkmypassword.exe
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Check out source
@@ -20,19 +34,59 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build release binary
+        run: cargo build --locked --release
+
+      - name: Package executable (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
-          cargo build --locked --release
-
-          package_name="$(cargo metadata --no-deps --format-version 1 \
-            | python3 -c 'import json,sys; print(json.load(sys.stdin)["packages"][0]["name"])')"
-
           mkdir -p dist
-          cp "target/release/$package_name" "dist/$package_name-linux-x86_64"
+          tar -czf "dist/${{ matrix.asset }}" \
+            -C target/release "${{ matrix.binary }}"
 
-      - name: Create checksums and GPG signature
+      - name: Package executable (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive `
+            -Path "target/release/${{ matrix.binary }}" `
+            -DestinationPath "dist/${{ matrix.asset }}"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.os }}
+          path: dist/${{ matrix.asset }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Download all platform builds
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Create SHA256SUMS
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum checkmypassword-* > SHA256SUMS
+
+      - name: Sign SHA256SUMS
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        shell: bash
         run: |
           set -euo pipefail
           test -n "$GPG_PRIVATE_KEY"
@@ -40,23 +94,16 @@ jobs:
 
           printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --import
 
-          cd dist
-          find . -maxdepth 1 -type f \
-            ! -name 'SHA256SUMS' \
-            ! -name 'SHA256SUMS.asc' \
-            -printf '%f\0' \
-            | sort -z \
-            | xargs -0 -r sha256sum > SHA256SUMS
-
           gpg --batch --yes \
             --pinentry-mode loopback \
             --passphrase "$GPG_PASSPHRASE" \
             --armor --detach-sign \
-            --output SHA256SUMS.asc \
-            SHA256SUMS
+            --output dist/SHA256SUMS.asc \
+            dist/SHA256SUMS
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           body_path: RELEASE_NOTES.md
           files: dist/*
+          fail_on_unmatched_files: true
